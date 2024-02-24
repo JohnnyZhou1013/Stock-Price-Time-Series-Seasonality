@@ -1,0 +1,477 @@
+---
+title: "Code"
+author: "ZHOU, Nijunfei"
+date: "2023-10-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r import_libraries}
+
+
+# Core libraries
+library(tidyverse)
+library(timetk)
+library(tidyquant)
+
+
+# Exploration
+library(DataExplorer)
+
+
+# Visualization
+library(plotly)
+library(highcharter)
+library(gt)
+library(ggthemes)
+```
+
+```{r read_file}
+# read the data ----
+
+complete_stock_tbl <- read.csv("all_stocks_2006-01-01_to_2018-01-01.csv")
+
+# Create sector by type of stock
+# AABA (Yahoo final day of trading in October)
+# Yahoo was classified as Technology
+final_stock_tbl <- complete_stock_tbl %>% 
+  set_names(names(.) %>% str_to_lower()) %>% 
+  mutate(
+    sector = case_when(
+      name == "MMM" ~ "Business/Consumer Services",
+      name == "AXP" ~ "Financial Services",
+      name == "AAPL" ~ "Technology", 
+      name == "BA" ~ "Industrial Goods",
+      name == "CAT" ~ "Industrial Goods", 
+      name == "CVX" ~ "Companies on the Energy Service",
+      name == "CSCO" ~ "Technology",
+      name == "KO" ~ "Consumer Goods", 
+      name == "DIS" ~ "Media/Entertainment",
+      name == "XOM" ~ "Companies on the Energy Service",
+      name == "GE" ~ "Business/Consumer Services",
+      name == "GS" ~ "Financial Services",
+      name == "HD" ~ "Retail/Wholesale",
+      name == "IBM" ~ "Business/Consumer Services",
+      name == "INTC" ~ "Technology",
+      name == "JNJ" ~ "Health Care/Life Sciences",
+      name == "JPM" ~ "Financial Services",
+      name == "MCD" ~ "Leisure/Arts/Hospitality",
+      name == "MRK" ~ "Health Care/Life Sciences",
+      name == "MSFT" ~ "Technology",
+      name == "NKE" ~ "Consumer Goods",
+      name == "PFE" ~ "Health Care/Life Sciences",
+      name == "PG" ~ "Consumer Goods",
+      name == "TRV" ~ "Financial Services",
+      name == "UTX" ~ "Technology", 
+      name == "UNH" ~ "Financial Services", 
+      name == "VZ" ~ "Telecommunication Services", 
+      name == "WMT" ~ "Retail/Wholesale",
+      name == "GOOGL" ~ "Technology",
+      name == "AMZN" ~ "Retail/Wholesale",
+      TRUE ~ "Technology"
+      
+    )
+  )
+
+```
+
+```{r funct_by_time}
+# Function to get average price by week, month and quarter
+# If we use the mean(close) daily we get the actual values
+# Since values are unique
+convert_date_ts <- function(data, unit = "day"){
+  
+  new_data <- data %>% 
+    mutate(date = floor_date(date, unit = unit)) %>% 
+    group_by(date, name) %>% 
+    summarise(
+      close = mean(close)
+    ) %>% 
+    ungroup()
+  
+  return(new_data)
+}
+
+
+```
+
+
+### Day
+
+```{r ts_daily}
+# Pick by stock (6 stocks from different industries)
+filtered_final_stock_tbl <- final_stock_tbl %>% 
+  filter(name %in% c("AAPL", "GS", "GOOGL", "XOM", "CAT", "WMT")) %>% 
+  mutate(
+    date = ymd(date)
+  )
+
+# Daily
+filtered_final_stock_tbl %>% 
+  convert_date_ts() %>% 
+  group_by(name) %>% 
+  plot_time_series(
+    .date_var = date,
+    .value = close,
+    .facet_ncol = 2,
+    .smooth_color = "#18BC9C",
+    .smooth_size = 0.5
+  )
+
+
+```
+
+### Week
+
+```{r ts_weekly}
+filtered_final_stock_tbl %>% 
+  convert_date_ts(unit = "week") %>% 
+  group_by(name) %>% 
+  plot_time_series(
+    .date_var = date,
+    .value = close,
+    .facet_ncol = 2,
+    .smooth_color = "#18BC9C",
+    .smooth_size = 0.5
+  )
+
+
+```
+
+### Month
+
+```{r ts_monthly}
+
+filtered_final_stock_tbl %>% 
+  convert_date_ts(unit = "month") %>% 
+  group_by(name) %>% 
+  plot_time_series(
+    .date_var = date,
+    .value = close,
+    .facet_ncol = 2,
+    .smooth_color = "#18BC9C",
+    .smooth_size = 0.5
+  )
+
+```
+
+### Quarter
+
+```{r ts_quarterly}
+
+filtered_final_stock_tbl %>% 
+  convert_date_ts(unit = "quarter") %>% 
+  group_by(name) %>% 
+  plot_time_series(
+    .date_var = date,
+    .value = close,
+    .facet_ncol = 2,
+    .smooth_color = "#18BC9C",
+    .smooth_size = 0.5
+  )
+
+```
+
+### Year
+
+```{r ts_yearly}
+filtered_final_stock_tbl %>% 
+  convert_date_ts(unit = "year") %>% 
+  group_by(name) %>% 
+  plot_time_series(
+    .date_var = date,
+    .value = close,
+    .facet_ncol = 2,
+    .smooth_color = "#18BC9C",
+    .smooth_size = 0.5
+  )
+
+
+```
+
+```{r stock_returns_by_company}
+# Daily stock return by company
+# Using Tidyquant package
+
+daily_stock_return <- filtered_final_stock_tbl %>%
+  mutate(
+    name = name %>% as_factor()
+  ) %>% 
+  group_by(name) %>% 
+  tq_transmute(
+    select = close,
+    mutate_fun = periodReturn,
+    period = "daily",
+    col_rename = "stock_return"
+  )
+
+# Visualization with ggplot
+daily_stock_return %>% 
+  ggplot(aes(x=date, y=stock_return)) + geom_line(color = palette_light()[[1]]) + 
+  facet_wrap(~name) + theme_calc() + 
+  labs(
+    title = "Stock Returns",
+    subtitle = "by Company",
+    y = "returns"
+  ) + 
+  theme(plot.title = element_text(hjust=0.5)) 
+
+  
+
+```
+
+```{r return_vol_tbl}
+return_volatility_tbl <- function(data, unit="daily", ...){
+  
+  vars_col <- quos(...)
+  
+  tbl_return_volatility <- data %>% 
+    mutate(
+    name = name %>% as_factor()
+  ) %>% 
+  group_by(name) %>% 
+  tq_transmute(
+    select = close,
+    mutate_fun = periodReturn,
+    period = unit,
+    col_rename = "stock_return"
+  ) %>% 
+    mutate(
+    company = case_when(
+      name == "AAPL" ~ "Apple",
+      name == "GOOGL" ~ "Google",
+      name == "XOM" ~ "Exxon",
+      name == "GS" ~ "Goldman Sachs",
+      name == "WMT" ~ "Walmart",
+      TRUE ~ "Caterpillar"
+    )
+  ) %>% 
+    group_by(!!!vars_col) %>% 
+      summarise(
+    `percent return` = mean(stock_return),
+    `standard deviation` = sd(stock_return)
+  ) %>% 
+  ungroup() %>% 
+  arrange(desc(`percent return`)) %>% gt() %>% 
+  data_color(
+    columns = vars(`standard deviation`),
+    colors = scales::col_numeric(
+      palette = c("#ffffff", "#f2fbd2", "#FA6047", "#F25555", "#FA1B1B"), 
+      domain = NULL
+    )) %>% 
+  data_color(
+    columns = vars(`percent return`),
+    colors = scales::col_numeric(
+      palette = c("#ffffff", "#f2fbd2", "#c9ecb4", "#93d3ab", "#35b0ab"),
+      domain = NULL
+    )
+  ) %>% fmt_percent(
+    columns = vars(`percent return`), 
+    decimals = 4
+  ) %>% 
+  fmt_number(
+    columns = vars(`standard deviation`),
+    decimals = 4
+  ) %>% 
+    tab_header(
+    title = md("**2006 - 2017 Measure of Return and Volatility**"),
+    subtitle = "An overview of Risk and Return"
+  )
+  
+  
+  return(tbl_return_volatility)
+    
+}
+```
+
+### Daily
+
+```{r risk_return_table}
+filtered_final_stock_tbl %>% 
+  return_volatility_tbl(unit = "daily", company, name)
+  
+
+```
+
+
+### Weekly
+
+```{r return_weekly}
+filtered_final_stock_tbl %>% 
+  return_volatility_tbl(unit = "weekly", company, name)
+
+
+```
+
+
+
+### Monthly
+
+```{r return_monthly}
+filtered_final_stock_tbl %>% 
+  return_volatility_tbl(unit = "monthly", company, name)
+
+```
+
+
+### Quarterly
+
+
+```{r return_quarterly}
+filtered_final_stock_tbl %>% 
+  return_volatility_tbl(unit = "quarterly", company, name)
+
+
+```
+
+
+### Yearly
+```{r return_yearly}
+filtered_final_stock_tbl %>% 
+  return_volatility_tbl(unit = "yearly", company, name)
+
+```
+
+## Exploring Seasonality and Pattern
+
+```{r Apple seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Apple
+filtered_final_stock_tbl %>% 
+  filter(name == "AAPL") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Apple",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Caterpillar seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Caterpillar
+filtered_final_stock_tbl %>% 
+  filter(name == "CAT") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Caterpillar",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Google seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Google
+filtered_final_stock_tbl %>% 
+  filter(name == "GOOGL") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Google",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Exxon seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Exxon
+filtered_final_stock_tbl %>% 
+  filter(name == "XOM") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Exxon",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Goldman Sachs seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Goldman Sachs
+filtered_final_stock_tbl %>% 
+  filter(name == "GS") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Goldman Sachs",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Walmart seasonality_boxplot, fig.height=20, fig.width=8}
+                                 
+# Walmart
+filtered_final_stock_tbl %>% 
+  filter(name == "WMT") %>% 
+  plot_seasonal_diagnostics(
+    .date_var = date,
+    .value = close,
+    .geom_color = "darkblue",
+    .title = "Seasonal Diagnostics for Walmart",
+    .interactive=FALSE
+    
+  )
+
+```
+
+```{r Seasonal Decomposition, fig.height=10, fig.width=30}
+# Function to create seasonal decomposition with LOESS for the stocks
+
+plot_seasonal_decomposition <- function(data, title){
+  
+  stl_plot <- data %>% 
+    group_by(name) %>% 
+    plot_stl_diagnostics(
+      .date_var = date,
+      .value = log1p(close),
+      .title = title
+    )
+  
+  return(stl_plot)
+}
+
+
+# Visualization
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("AAPL")) %>% 
+  plot_seasonal_decomposition("Seasonal Decomposition for Apple")
+
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("CAT")) %>% 
+  plot_seasonal_decomposition("Seasonal Decomposition for Caterpillar")
+
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("GOOGL")) %>% 
+  plot_seasonal_decomposition("Seasonal Decomposition for Google")
+
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("XOM")) %>%
+  plot_seasonal_decomposition("Seasonal Decomposition for Exxon")
+
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("GS")) %>% 
+  plot_seasonal_decomposition("Seasonal Decomposition for Goldman Sachs")
+
+filtered_final_stock_tbl %>% 
+  filter(name %in% c("WMT")) %>% 
+  plot_seasonal_decomposition("Seasonal Decomposition for Walmart")
+```
